@@ -150,7 +150,7 @@ func main() {
 	})
 	r.NoRoute(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.URL.Path, "/api") {
-			c.JSON(404, gin.H{"error": "Not Founds"})
+			c.JSON(404, gin.H{"error": "Not Found"})
 			return
 		}
 		c.File("./frontend/dist/index.html")
