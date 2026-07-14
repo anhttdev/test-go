@@ -69,6 +69,7 @@ pipeline {
                 dir('cmd/api') {
                 sh 'go mod tidy'
                 sh 'go build -a -installsuffix cgo -o test-golang .'
+                sh 'cp test-golang ../../'
                 }
             }
         }
