@@ -67,7 +67,7 @@ pipeline {
         stage("Dong goi docker image") {
             steps {
             echo "Đóng gói file binary vào Docker Image phiên bản ${BUILD_NUMBER}..."
-            sh "docker build -t ${IMAGE_NAME}:lastest -t ${IMAGE_NAME}:${BUILD_NUMBER} ."
+            sh "docker build -t ${IMAGE_NAME}:latest -t ${IMAGE_NAME}:${BUILD_NUMBER} ."
             }
         }
 
