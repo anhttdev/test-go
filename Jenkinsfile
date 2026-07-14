@@ -19,6 +19,12 @@ pipeline {
     }
 
     stages {
+        stage('Checkout Code') { 
+            steps {
+                // Thay thế link GitHub bằng link dự án của bạn
+                git branch: 'main', credentialsId: 'github-credentials', url: 'https://github.com/anhttdev/go.git'
+            }
+        }
         stage("Chuan bi moi truong (.env)"){
             steps {
                 echo 'Đang tự động sinh file .env...'
@@ -48,7 +54,8 @@ pipeline {
             agent {
                 docker {
                 image 'golang:1.26-alpine'
-                args '-v $HOME/go/pkg/mod:/go/pkg/mod'
+                args '-u root:root'
+                reuseNode true
                 }
             }
 
@@ -59,8 +66,10 @@ pipeline {
 
             steps {
                 echo 'Đang tải thư viện và biên dịch ứng dụng...'
+                dir('cmd/api') {
                 sh 'go mod tidy'
-                sh "go build -a -installsuffix cgo -o ${APP_NAME} main.go"
+                sh 'go build -a -installsuffix cgo -o test-golang .'
+                }
             }
         }
 
