@@ -9,6 +9,7 @@ import (
 	"db/internal/service"
 	"db/internal/utils"
 	"log"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -125,6 +126,24 @@ func main() {
 		protectedV2V3.GET("/v2/users/profiles", userHandler.GetAll) // Đã sửa lại đúng tiền tố v2 group
 		protectedV2V3.GET("/v3/users", userHandler.GetUserCursor)
 	}
-	
+
+	// =========================================================================
+	// 4. SERVE FRONTEND (SPA) CHUNG PORT 8080
+	// Yêu cầu: build frontend trước để có thư mục ./frontend/dist
+	// =========================================================================
+	r.Static("/assets", "./frontend/dist/assets")
+	r.StaticFile("/favicon.svg", "./frontend/dist/favicon.svg")
+	r.StaticFile("/icons.svg", "./frontend/dist/icons.svg")
+	r.GET("/", func(c *gin.Context) {
+		c.File("./frontend/dist/index.html")
+	})
+	r.NoRoute(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api") {
+			c.JSON(404, gin.H{"error": "Not Found"})
+			return
+		}
+		c.File("./frontend/dist/index.html")
+	})
+
 	r.Run(":8080")
 }
