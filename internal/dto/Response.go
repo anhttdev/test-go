@@ -44,3 +44,9 @@ func ConvertUserToResponse(user model.User) UserResponse {
 		Gmail:       user.Gmail,
 	}
 }
+
+// UserWithAccount - Struct mở rộng chứa cả thông tin User và ID tài khoản cán bộ
+type UserWithAccount struct {
+	model.User
+	AccountID *uint `gorm:"column:account_id" json:"account_id"`
+}

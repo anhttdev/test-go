@@ -26,6 +26,17 @@ func (ur *SQLUserRepository) Create(user *model.User) error {
 	return nil
 }
 
+// FindById - Tìm thông tin người dân và bốc kèm luôn cả account_id (nếu có)
+func (ur *SQLUserRepository) FindUserAndAccountByUserId(userWithAcc *dto.UserWithAccount, id int) error {
+	err := ur.db.Table("users").
+		Select("users.*, accounts.id AS account_id").
+		Joins("LEFT JOIN public.accounts ON accounts.user_id = users.id").
+		Where("users.id = ?", id).
+		First(userWithAcc).Error
+
+	return err
+}
+
 func (ur *SQLUserRepository) FindById(user *model.User, id int) error {
 	if err := ur.db.First(user, id).Error; err != nil {
 		return err
@@ -104,7 +115,7 @@ func (ur *SQLUserRepository) CheckUnique(registerInput dto.RegisterInput) map[st
 	return errors
 }
 
-func (ur *SQLUserRepository) SearchUsers(name string, maso string, sortOrder string, page int, size int, users *[]model.User) error {
+func (ur *SQLUserRepository) ThanhViensSearchUsers(name string, maso string, sortOrder string, page int, size int, users *[]model.User) error {
 	query := ur.db.Model(&model.User{})
 
 	if name != "" {

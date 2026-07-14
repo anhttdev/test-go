@@ -1,3 +1,5 @@
+import axios from 'axios'
+
 export type ApiErrorPayload =
   | string
   | {
@@ -6,15 +8,16 @@ export type ApiErrorPayload =
       [key: string]: unknown
     }
 
-async function parseResponse(response: Response) {
-  const contentType = response.headers.get('content-type') ?? ''
+export class ApiRequestError extends Error {
+  status: number
+  payload: unknown
 
-  if (contentType.includes('application/json')) {
-    return response.json()
+  constructor(message: string, status: number, payload: unknown) {
+    super(message)
+    this.name = 'ApiRequestError'
+    this.status = status
+    this.payload = payload
   }
-
-  const text = await response.text()
-  return text || null
 }
 
 function getErrorMessage(payload: unknown, fallback: string) {
@@ -34,7 +37,34 @@ function getErrorMessage(payload: unknown, fallback: string) {
   return fallback
 }
 
+const http = axios.create({
+  withCredentials: true,
+})
+
+http.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status
+    if (status === 401) {
+      window.dispatchEvent(new CustomEvent('app:unauthorized'))
+    }
+    if (status === 403) {
+      window.dispatchEvent(
+        new CustomEvent('app:toast', {
+          detail: {
+            type: 'error',
+            message: 'Cảnh báo bảo mật: Bạn không có quyền thực hiện chức năng này!',
+          },
+        }),
+      )
+    }
+    return Promise.reject(error)
+  },
+)
+
 export async function requestApi<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? 'GET').toUpperCase()
+
   const headers = new Headers(init?.headers)
   const hasBody = init?.body !== undefined
 
@@ -42,18 +72,25 @@ export async function requestApi<T>(path: string, init?: RequestInit): Promise<T
     headers.set('Content-Type', 'application/json')
   }
 
-  const response = await fetch(path, {
-    credentials: 'include',
-    ...init,
-    headers,
+  const headerRecord: Record<string, string> = {}
+  headers.forEach((value, key) => {
+    headerRecord[key] = value
   })
 
-  const payload = await parseResponse(response)
-
-  if (!response.ok) {
-    throw new Error(getErrorMessage(payload, `Yêu cầu thất bại (${response.status})`))
+  try {
+    const response = await http.request({
+      url: path,
+      method,
+      data: init?.body,
+      headers: headerRecord,
+    })
+    return response.data as T
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response) {
+      const status = error.response.status
+      const payload = error.response.data
+      throw new ApiRequestError(getErrorMessage(payload, `Yêu cầu thất bại (${status})`), status, payload)
+    }
+    throw error
   }
-
-  return payload as T
 }
-

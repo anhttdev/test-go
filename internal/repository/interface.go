@@ -9,13 +9,14 @@ import (
 
 type UserRepository interface {
 	Create(user *model.User) error
+	FindUserAndAccountByUserId(userWithAcc *dto.UserWithAccount, id int) error
 	FindById(user *model.User, id int) error
 	DeleteUserById(id int) error
 	Update(user *model.User) error
 	FindAll(types string, users *[]model.User, page int, limit int) error
 	FindUserByName(name string, users *[]model.User) error
 	FindUserByMaso(maso string, users *[]model.User) error
-	SearchUsers(name string, maso string, sortOrder string, page int, size int, users *[]model.User) error
+	//SearchUsers(name string, maso string, sortOrder string, page int, size int, users *[]model.User) error
 	IsUniqueField(fiel string, value string) (bool, error)
 	CheckUnique(registerInput dto.RegisterInput) map[string]string
 	ConvertUserToResponse(user model.User) dto.Response

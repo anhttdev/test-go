@@ -6,12 +6,14 @@ import (
 )
 
 type DatabaseConfig struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
-	DBName   string
-	SSLMode  string
+	Host       string
+	Port       string
+	User       string
+	Password   string
+	DBName     string
+	SSLMode    string
+	REDIS_HOST string
+	REDIS_PORT string
 }
 
 type Config struct {
@@ -21,12 +23,14 @@ type Config struct {
 func NewConfig() *Config {
 	return &Config{
 		DB: DatabaseConfig{
-			Host:     utils.GetEnv("DB_HOST", "localhost"),
-			Port:     utils.GetEnv("DB_PORT", "5433"),
-			User:     utils.GetEnv("DB_USER", "root"),
-			Password: utils.GetEnv("DB_PASSWORD", "123456"),
-			DBName:   utils.GetEnv("DB_NAME", "test"),
-			SSLMode:  utils.GetEnv("DB_SLLMODE", "disable"),
+			Host:       utils.GetEnv("DB_HOST", "localhost"),
+			Port:       utils.GetEnv("DB_PORT", "5433"),
+			User:       utils.GetEnv("DB_USER", "root"),
+			Password:   utils.GetEnv("DB_PASSWORD", "123456"),
+			DBName:     utils.GetEnv("DB_NAME", "test"),
+			SSLMode:    utils.GetEnv("DB_SLLMODE", "disable"),
+			REDIS_HOST: utils.GetEnv("REDIS_HOST", "redis"),
+			REDIS_PORT: utils.GetEnv("REDIS_PORT", "6379"),
 		},
 	}
 }

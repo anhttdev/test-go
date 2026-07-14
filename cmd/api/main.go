@@ -3,6 +3,7 @@ package main
 import (
 	db2 "db/internal/db/cache"
 	db "db/internal/db/migrations"
+	"db/internal/db/rabbitMQ"
 	"db/internal/handlers"
 	"db/internal/middleware"
 	"db/internal/repository"
@@ -22,16 +23,19 @@ func main() {
 	}
 	db.InitDB()
 	db2.InitRedis()
-
 	if err := utils.RegisterValidation(); err != nil {
 		panic("❌ Không thể đăng ký validator: " + err.Error())
 	}
-
+	channel, err := rabbitMQ.InitRabbitMQ()
+	if err != nil {
+		log.Println("Không thể khởi tạo channel RabbitMQ")
+	}
 	r := gin.Default()
 	r.Use(middleware.GlobalErrorHandler())
 
-	// 2. KHỞI TẠO DI (DEPENDENCY INJECTION) - REPOSITORY & SERVICE & HANDLER
-	// Hộ khẩu & User
+	mqservice := service.NewRabbitMQService(channel)
+
+	// 2. KHỞI TẠO DI (DEPENDENCY INJECTION)
 	userRepository := repository.NewSQLUserRepository(db.DB)
 	userHandler := handlers.NewUserHandler(userRepository)
 
@@ -39,97 +43,104 @@ func main() {
 	hokhauService := service.NewHoKhauService(db.DB, hokhauRepository, userRepository)
 	hokhauHandler := handlers.NewHoKhauHandler(hokhauRepository, *hokhauService)
 
-	// Tài khoản & Xác thực (Có nhét RedisClient vào phục vụ Token Version)
 	accountRepository := repository.NewSQLAccountRepository(db.DB)
-	accountService := service.NewAccountService(db.DB, accountRepository, userRepository, db2.RedisClient)
+	accountService := service.NewAccountService(db.DB, accountRepository, userRepository, db2.RedisClient, *mqservice)
 	accountHandler := handlers.NewAccountHandler(*accountService)
 
 	jwtService := service.NewJwtService(db.DB)
 	authService := service.NewAuthService(db.DB, *accountService, *jwtService, db2.RedisClient)
 	authHandler := handlers.NewAuthHandler(*authService, *jwtService, db2.RedisClient, db.DB, *accountService)
 
-	// =========================================================================
-	// 3. QUẢN LÝ ĐỊNH TUYẾN (ROUTE MANAGEMENT)
-	// =========================================================================
+	roleService := service.NewRoleService(db.DB)
+	roleHandler := handlers.NewRoleHandler(roleService)
+	permissionService := service.NewPermissionService(db.DB)
+	permissionHandler := handlers.NewPermissionHandler(permissionService)
 
-	// 🌐 NHÓM 1: CÁC API PUBLIC (Không cần đăng nhập, ai gọi cũng được)
 	apiV1 := r.Group("/api/v1")
 	{
-		// Luồng Auth chuẩn (Cookie)
+		// 🚪 PHÂN KHU 1: API PUBLIC
 		auth := apiV1.Group("/auth")
 		{
 			auth.POST("/register", accountHandler.RegisterNewAccount)
 			auth.POST("/login", authHandler.Login)
-			auth.POST("/refresh", authHandler.RefreshToken) // Khuyên dùng: Trong ruột hàm này có check version như anh em mình sửa lúc nãy
+			auth.POST("/refresh", authHandler.RefreshToken)
 			auth.POST("/forgot-password", authHandler.ForgotPassword)
 			auth.POST("/verify-reset-token", authHandler.VerifyResetToken)
 			auth.POST("/reset-password", authHandler.ResetPassword)
 		}
-	}
 
-	// 💻 NHÓM 2: CÁC API LOCAL STORAGE (Dành cho môi trường test/local không dùng cookie)
-	apiLocal := r.Group("/api/local/auth")
-	{
-		apiLocal.POST("/register", accountHandler.RegisterNewAccount)
-		apiLocal.POST("/login", authHandler.LoginWithLocalStorage)
-		apiLocal.POST("/refresh", authHandler.RefreshToken)
-	}
-
-	// =========================================================================
-	// 🔒 NHÓM 3: CÁC API PROTECTED (BẮT BUỘC PHẢI CHECK TOKEN VERSION & BLACKLIST)
-	// Đổi mật khẩu/Logout xong là tất cả các Route dưới này của thiết bị cũ sẽ bị CHẶN SẠCH
-	// =========================================================================
-
-	// Tạo hẳn chốt chặn tối cao cho toàn bộ tài nguyên hệ thống v1
-	protectedV1 := r.Group("/api/v1")
-	protectedV1.Use(middleware.AuthRequiredWithCookieAndBlacklist(db2.RedisClient)) // VÁ LỖ HỔNG: Truyền thêm db.DB vào để cứu viện Cache Miss
-	{
-		// Các API Auth nhạy cảm
-		authSecured := protectedV1.Group("/auth")
+		// 🔒 PHÂN KHU 2: API PROTECTED
+		protected := apiV1.Group("")
+		protected.Use(middleware.AuthRequiredWithCookieAndBlacklist(db2.RedisClient))
 		{
-			authSecured.POST("/logout", authHandler.Logout)
-			authSecured.POST("/change-password", authHandler.ChangePassword)
-			authSecured.POST("/logoutall", authHandler.LogoutAllService)
+			// --- Bảo mật tài khoản cá nhân ---
+			authSecured := protected.Group("/auth")
+			{
+				authSecured.POST("/logout", authHandler.Logout)
+				authSecured.POST("/change-password", authHandler.ChangePassword)
+				authSecured.POST("/logoutall", authHandler.LogoutAllService)
+			}
+
+			users := protected.Group("/users")
+			{
+				// 👑 ĐẨY CÁC ROUTE TĨNH LÊN TRÊN (Tránh bị đè bởi /:id)
+				users.GET("/permissions", accountHandler.GetCurrentAccountPermissions) // Đọc quyền để gác cổng UI Frontend
+				users.GET("/roles", accountHandler.GetCurrentAccountRoles)
+				users.GET("/profile", accountHandler.GetProfile) // Xem hồ sơ chính tôi
+
+				// 👥 Nhóm nghiệp vụ quản trị danh sách người dân
+				users.GET("", middleware.AuthPermission(accountService, "nguoi_dan:view"), userHandler.GetAll)
+				users.POST("", middleware.AuthPermission(accountService, "nguoi_dan:create"), userHandler.CreateUser)
+
+				// 🚨 CÁC ROUTE ĐỘNG CHỨA PARAMETER ĐỂ XUỐNG DƯỚI CÙNG
+				users.GET("/:id", middleware.AuthPermission(accountService, "nguoi_dan:view"), userHandler.GetUserById)
+				users.PUT("/:id", middleware.AuthPermission(accountService, "nguoi_dan:update"), userHandler.UpdateUser)
+				users.DELETE("/:id", middleware.AuthPermission(accountService, "nguoi_dan:delete"), userHandler.DeleteUserById)
+			}
+
+			// --- Nghiệp vụ Hộ Khẩu ---
+			hokhau := protected.Group("/hokhau")
+			{
+				hokhau.GET("/", middleware.AuthPermission(accountService, "ho_khau:view"), hokhauHandler.GetAllHoKhau)
+				hokhau.POST("/", middleware.AuthPermission(accountService, "ho_khau:create"), hokhauHandler.CreateHoKhau)
+				hokhau.PATCH("/transfer", middleware.AuthPermission(accountService, "ho_khau:update"), hokhauHandler.TransferHoKhau)
+
+				// Route động /:id đẩy xuống dưới cùng nhóm Hộ khẩu
+				hokhau.GET("/:id", middleware.AuthPermission(accountService, "ho_khau:view"), hokhauHandler.GetHoKhauById)
+				hokhau.DELETE("/:id", middleware.AuthPermission(accountService, "ho_khau:delete"), hokhauHandler.DeleteHoKhau)
+			}
+
+			// --- Đăng ký tài khoản nội bộ cho cán bộ ---
+			protected.POST("/account", middleware.AuthPermission(accountService, "account:create"), accountHandler.RegisterNewAccount)
+
+			// 👑 PHÂN KHU 3: QUẢN TRỊ PHÂN QUYỀN (Hệ thống phân quyền Many-To-Many)
+			admin := protected.Group("/admin")
+			{
+				// Điều phối danh mục quyền gốc
+				admin.POST("/permissions", middleware.AuthPermission(accountService, "permission:create"), permissionHandler.CreatePermission)
+				admin.GET("/permissions", middleware.AuthPermission(accountService, "permission:view"), permissionHandler.GetAllPermissions)
+				admin.PUT("/permissions/:id", middleware.AuthPermission(accountService, "permission:update"), permissionHandler.UpdatePermission)
+				admin.DELETE("/permissions/:id", middleware.AuthPermission(accountService, "permission:delete"), permissionHandler.DeletePermission)
+
+				// Quản lý cơ cấu chức vụ
+				admin.POST("/roles", middleware.AuthPermission(accountService, "role:create"), roleHandler.CreateRole)
+				admin.GET("/roles", middleware.AuthPermission(accountService, "role:view"), roleHandler.GetAllRoles)
+				admin.PUT("/roles/:id", middleware.AuthPermission(accountService, "role:update"), roleHandler.UpdateRole)
+				admin.DELETE("/roles/:id", middleware.AuthPermission(accountService, "role:delete"), roleHandler.DeleteRole)
+
+				// Gán/gỡ mảng liên kết Many-to-Many của Chức vụ và Quyền hạn
+				admin.POST("/roles/:id/permissions", middleware.AuthPermission(accountService, "role:assign_permission"), roleHandler.AssignPermissionsToRole)
+				admin.DELETE("/roles/:id/permissions", middleware.AuthPermission(accountService, "role:remove_permission"), roleHandler.DeletePermissionsToRole)
+
+				// 🎯 ĐƯỜNG DẪN CHUẨN XỊN: /api/v1/admin/account/assignroles
+				admin.POST("/account/assignroles", middleware.AuthPermission(accountService, "account:update_role"), accountHandler.AssignRoleAccount)
+				admin.DELETE("/account/deleteroles", middleware.AuthPermission(accountService, "account:delete_role"), accountHandler.RemoveRoleAccount)
+			}
 		}
-
-		// Tài nguyên Người dùng (Đã được vá lỗi, thiết bị khác đổi pass là máy này mất quyền xem profile ngay)
-		users := protectedV1.Group("/users")
-		{
-			users.GET("/profile", userHandler.GetAll) // Đường dẫn cũ: /api/v1/users/profile
-			users.GET("/", userHandler.GetAll)        // Đường dẫn cũ: /api/v1/users/
-		}
-
-		// Tài nguyên cá lẻ liên quan đến User
-		user := protectedV1.Group("/user")
-		{
-			user.POST("/", userHandler.CreateUser)
-			user.GET("/:id", userHandler.GetUserById)
-			user.PUT("/:id", userHandler.UpdateUser)
-			user.DELETE("/:id", userHandler.DeleteUserById)
-		}
-
-		// Tài nguyên Hộ Khẩu
-		hokhau := protectedV1.Group("/hokhau")
-		{
-			hokhau.POST("/", hokhauHandler.CreateHoKhau)
-			hokhau.PATCH("/", hokhauHandler.TransferHoKhau)
-		}
-
-		// Đăng ký tài khoản nội bộ nâng cao
-		protectedV1.POST("/account", accountHandler.RegisterNewAccount)
-	}
-
-	protectedV2V3 := r.Group("/api")
-	protectedV2V3.Use(middleware.AuthRequiredWithCookieAndBlacklist(db2.RedisClient)) // Đồng bộ bảo mật tuyệt đối cho V2/V3
-	{
-		protectedV2V3.GET("/v2/users", userHandler.GetAllV2)
-		protectedV2V3.GET("/v2/users/profiles", userHandler.GetAll) // Đã sửa lại đúng tiền tố v2 group
-		protectedV2V3.GET("/v3/users", userHandler.GetUserCursor)
 	}
 
 	// =========================================================================
 	// 4. SERVE FRONTEND (SPA) CHUNG PORT 8080
-	// Yêu cầu: build frontend trước để có thư mục ./frontend/dist
 	// =========================================================================
 	r.Static("/assets", "./frontend/dist/assets")
 	r.StaticFile("/favicon.svg", "./frontend/dist/favicon.svg")

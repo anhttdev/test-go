@@ -38,6 +38,16 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  useEffect(() => {
+    const onToast = (event: Event) => {
+      const detail = (event as CustomEvent).detail as { type?: Toast['type']; title?: string; message?: string } | undefined
+      if (!detail?.type || !detail?.message) return
+      api.push({ type: detail.type, title: detail.title, message: detail.message })
+    }
+    window.addEventListener('app:toast', onToast)
+    return () => window.removeEventListener('app:toast', onToast)
+  }, [api])
+
   return (
     <ToastContext.Provider value={api}>
       {children}
@@ -56,4 +66,3 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     </ToastContext.Provider>
   )
 }
-

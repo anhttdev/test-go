@@ -7,6 +7,15 @@ export type Citizen = {
   gmail?: string
   email?: string
   ho_khau_id?: number | null
+  account_id?: number | null
+  accountId?: number | null
+  account?: {
+    id?: number
+    username?: string
+    is_active?: boolean
+    roles?: { id: number; role_code?: string; role_name?: string }[]
+    Roles?: { id: number; role_code?: string; role_name?: string }[]
+  } | null
   created_at?: string
   updated_at?: string
 }
@@ -57,4 +66,3 @@ export function mapCitizenToForm(citizen: Citizen): CitizenForm {
     gmail: citizen.gmail ?? citizen.email ?? '',
   }
 }
-

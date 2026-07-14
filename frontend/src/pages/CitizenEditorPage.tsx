@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { createCitizen, deleteCitizen, getCitizenById, updateCitizen } from '../api/citizens'
+import { useAuth } from '../features/auth/auth-context'
 import type { Citizen, CitizenForm } from '../lib/domain'
 import { DEFAULT_CITIZEN_FORM, mapCitizenToForm } from '../lib/domain'
 import { formatDateTime } from '../lib/format'
+import { ForbiddenPage } from './ForbiddenPage'
 import { Button, Card, Field, TextInput } from '../ui/primitives'
 import { useToast } from '../ui/toast'
 
@@ -23,6 +25,7 @@ function validate(form: CitizenForm) {
 }
 
 export function CitizenEditorPage() {
+  const auth = useAuth()
   const toast = useToast()
   const navigate = useNavigate()
   const params = useParams()
@@ -36,6 +39,10 @@ export function CitizenEditorPage() {
   }, [params.id])
 
   const mode = citizenId ? 'edit' : 'create'
+  const canView = auth.hasPermission('nguoi_dan:view')
+  const canCreate = auth.hasPermission('nguoi_dan:create')
+  const canUpdate = auth.hasPermission('nguoi_dan:update')
+  const canDelete = auth.hasPermission('nguoi_dan:delete')
 
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -71,8 +78,26 @@ export function CitizenEditorPage() {
       .finally(() => setIsLoading(false))
   }, [citizenId])
 
+  if (mode === 'create' && !canCreate) {
+    return <ForbiddenPage />
+  }
+
+  if (mode === 'edit' && !canView && !canUpdate) {
+    return <ForbiddenPage />
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+
+    if (mode === 'create' && !canCreate) {
+      toast.push({ type: 'error', title: 'Không đủ quyền', message: 'Bạn không có quyền tạo hồ sơ.' })
+      return
+    }
+
+    if (mode === 'edit' && !canUpdate) {
+      toast.push({ type: 'error', title: 'Không đủ quyền', message: 'Bạn không có quyền cập nhật hồ sơ.' })
+      return
+    }
 
     const nextErrors = validate(form)
     setErrors(nextErrors)
@@ -107,6 +132,10 @@ export function CitizenEditorPage() {
 
   async function handleDelete() {
     if (!citizenId) return
+    if (!canDelete) {
+      toast.push({ type: 'error', title: 'Không đủ quyền', message: 'Bạn không có quyền xoá hồ sơ.' })
+      return
+    }
     const ok = window.confirm(`Xoá hồ sơ ID ${citizenId}? Thao tác không thể hoàn tác.`)
     if (!ok) return
 
@@ -141,7 +170,7 @@ export function CitizenEditorPage() {
           <Link to="/app/citizens" className="btn btn-ghost btn-md">
             Quay lại
           </Link>
-          {mode === 'edit' ? (
+          {mode === 'edit' && canDelete ? (
             <Button variant="danger" onClick={() => void handleDelete()} loading={isDeleting} disabled={isLoading}>
               Xoá
             </Button>
@@ -165,6 +194,7 @@ export function CitizenEditorPage() {
                   value={form.ma_so}
                   onChange={(e) => setForm((c) => ({ ...c, ma_so: e.target.value }))}
                   placeholder="VD: ND001"
+                  disabled={mode === 'edit' && !canUpdate}
                 />
               </Field>
               <Field label="Họ tên" error={errors.ho_ten}>
@@ -172,6 +202,7 @@ export function CitizenEditorPage() {
                   value={form.ho_ten}
                   onChange={(e) => setForm((c) => ({ ...c, ho_ten: e.target.value }))}
                   placeholder="Nguyễn Văn A"
+                  disabled={mode === 'edit' && !canUpdate}
                 />
               </Field>
               <Field label="Số CCCD" hint="9–12 chữ số" error={errors.so_cccd}>
@@ -179,6 +210,7 @@ export function CitizenEditorPage() {
                   value={form.so_cccd}
                   onChange={(e) => setForm((c) => ({ ...c, so_cccd: e.target.value }))}
                   placeholder="012345678901"
+                  disabled={mode === 'edit' && !canUpdate}
                 />
               </Field>
               <Field label="Số điện thoại" hint="9–11 chữ số" error={errors.so_dien_thoai}>
@@ -186,6 +218,7 @@ export function CitizenEditorPage() {
                   value={form.so_dien_thoai}
                   onChange={(e) => setForm((c) => ({ ...c, so_dien_thoai: e.target.value }))}
                   placeholder="0901234567"
+                  disabled={mode === 'edit' && !canUpdate}
                 />
               </Field>
               <Field label="Email" hint="Tuỳ chọn" error={errors.gmail}>
@@ -194,14 +227,23 @@ export function CitizenEditorPage() {
                   value={form.gmail}
                   onChange={(e) => setForm((c) => ({ ...c, gmail: e.target.value }))}
                   placeholder="abc@domain.gov.vn"
+                  disabled={mode === 'edit' && !canUpdate}
                 />
               </Field>
             </div>
 
             <div className="form-actions">
-              <Button variant="primary" type="submit" loading={isSaving} disabled={isLoading}>
-                {mode === 'create' ? 'Tạo hồ sơ' : 'Lưu thay đổi'}
-              </Button>
+              {mode === 'create' ? (
+                <Button variant="primary" type="submit" loading={isSaving} disabled={isLoading || !canCreate}>
+                  Tạo hồ sơ
+                </Button>
+              ) : canUpdate ? (
+                <Button variant="primary" type="submit" loading={isSaving} disabled={isLoading}>
+                  Lưu thay đổi
+                </Button>
+              ) : (
+                <div className="muted">Chế độ chỉ xem (không có quyền cập nhật).</div>
+              )}
               {mode === 'create' ? (
                 <Button type="button" variant="ghost" disabled={isSaving} onClick={() => setForm(DEFAULT_CITIZEN_FORM)}>
                   Làm mới

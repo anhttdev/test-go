@@ -28,12 +28,14 @@ func InitDB() error {
 		return fmt.Errorf("error opening DB connection...")
 	}
 	err = DB.AutoMigrate(
+		&model.Account{},
+		&model.Role{},
+		&model.Permission{},
 		&model.HoKhau{},
 		&model.User{},
 		&model.LichSuCongTac{},
-		&model.Account{},
-		&model.PasswordReset{},
 	)
+	SeedRolesAndPermissions(DB)
 	if err != nil {
 		return fmt.Errorf("error during migration: %w", err)
 	}

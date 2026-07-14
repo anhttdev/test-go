@@ -19,10 +19,55 @@ export type RegisterAccountForm = {
   password: string
 }
 
+export type PermissionCode = string
+
+export type Permission = {
+  id?: number
+  permission_code?: string
+  permissionCode?: string
+  permission_name?: string
+  permissionName?: string
+}
+
+export type Role = {
+  id?: number
+  role_code?: string
+  roleCode?: string
+  role_name?: string
+  roleName?: string
+  permissions?: Permission[]
+}
+
+export type AccountProfile = {
+  id?: number
+  username?: string
+  user?: {
+    id?: number
+    ma_so?: string
+    ho_ten?: string
+    so_cccd?: string
+    so_dien_thoai?: string
+    gmail?: string
+  }
+  roles?: Role[]
+  permissions?: PermissionCode[]
+}
+
+export type ProfileResponse = {
+  message?: string
+  data?: AccountProfile
+}
+
 export async function login(form: LoginForm) {
   return requestApi<Record<string, unknown>>('/api/v1/auth/login', {
     method: 'POST',
     body: JSON.stringify(form),
+  })
+}
+
+export async function refreshSession() {
+  return requestApi<Record<string, unknown>>('/api/v1/auth/refresh', {
+    method: 'POST',
   })
 }
 
@@ -33,7 +78,7 @@ export async function logout() {
 }
 
 export async function checkSession() {
-  return requestApi<unknown>('/api/v1/users/profile?page=1&size=5')
+  return requestApi<ProfileResponse>('/api/v1/users/profile')
 }
 
 export async function forgotPassword(form: ForgotPasswordForm) {
@@ -84,4 +129,12 @@ export async function registerAccount(form: RegisterAccountForm) {
     method: 'POST',
     body: JSON.stringify(form),
   })
+}
+
+export async function getMyPermissions() {
+  return requestApi<{ data?: PermissionCode[] }>('/api/v1/users/permissions')
+}
+
+export async function getMyRoles() {
+  return requestApi<{ data?: Role[] }>('/api/v1/users/roles')
 }

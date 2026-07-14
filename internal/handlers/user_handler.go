@@ -35,12 +35,12 @@ func (uh *UserHandler) GetUserById(ctx *gin.Context) {
 		ctx.JSON(400, utils.HandleValidationErrors(err))
 		return
 	}
-	var user model.User
-	if err := uh.repo.FindById(&user, pathData.ID); err != nil {
+	var output = dto.UserWithAccount{}
+	if err := uh.repo.FindUserAndAccountByUserId(&output, pathData.ID); err != nil {
 		ctx.JSON(http.StatusBadRequest, "User not found")
 		return
 	}
-	ctx.JSON(http.StatusOK, user)
+	ctx.JSON(http.StatusOK, output)
 }
 
 func (uh *UserHandler) CreateUser(ctx *gin.Context) {
@@ -171,35 +171,35 @@ func (uh *UserHandler) GetAll(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, users)
 }
 
-func (uh *UserHandler) GetAllV2(ctx *gin.Context) {
-	var users []model.User
-	var request dto.RequestSearchQuery
-
-	if err := ctx.ShouldBindQuery(&request); err != nil {
-		ctx.JSON(400, gin.H{"error": "dữ liệu không hợp lệ"})
-		return
-	}
-
-	page := request.Page
-	size := request.Size
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 10
-	}
-
-	sortOrder := ctx.DefaultQuery("sort", "asc")
-
-	err := uh.repo.SearchUsers(request.Name, request.MaSo, sortOrder, page, size, &users)
-
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi lấy dữ liệu"})
-		return
-	}
-
-	ctx.JSON(http.StatusOK, users)
-}
+//func (uh *UserHandler) GetAllV2(ctx *gin.Context) {
+//	var users []model.User
+//	var request dto.RequestSearchQuery
+//
+//	if err := ctx.ShouldBindQuery(&request); err != nil {
+//		ctx.JSON(400, gin.H{"error": "dữ liệu không hợp lệ"})
+//		return
+//	}
+//
+//	page := request.Page
+//	size := request.Size
+//	if page < 1 {
+//		page = 1
+//	}
+//	if size < 1 {
+//		size = 10
+//	}
+//
+//	sortOrder := ctx.DefaultQuery("sort", "asc")
+//
+//	err := uh.repo.SearchUsers(request.Name, request.MaSo, sortOrder, page, size, &users)
+//
+//	if err != nil {
+//		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi lấy dữ liệu"})
+//		return
+//	}
+//
+//	ctx.JSON(http.StatusOK, users)
+//}
 
 func (uh *UserHandler) GetUserCursor(ctx *gin.Context) {
 	var request dto.CursorPagingUser

@@ -12,6 +12,9 @@ type Account struct {
 	IsActive     bool      `gorm:"default:true" json:"is_active"` // Dùng để khóa/mở tài khoản đột ngột (Stateful)
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+	User         User      `gorm:"foreignKey:UserID;references:ID" json:"user,omitempty"`
+
+	Roles []Role `gorm:"many2many:user_roles;"`
 }
 
 type PasswordReset struct {

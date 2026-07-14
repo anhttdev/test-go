@@ -103,9 +103,8 @@ func AuthRequiredWithCookieAndBlacklist(redisClient *redis.Client) gin.HandlerFu
 		redisKey := "user_version:" + userIDStr
 		currentVersionStr, err := redisClient.Get(ctx, redisKey).Result()
 		var currentVersion int
-
+		var account model.Account
 		if err != nil {
-			var account model.Account
 			if dbErr := db.DB.Where("user_id = ?", claims.UserID).First(&account).Error; dbErr == nil {
 				currentVersion = int(account.TokenVersion)
 				redisClient.Set(ctx.Request.Context(), redisKey, account.TokenVersion, 30*24*time.Hour)
@@ -116,6 +115,7 @@ func AuthRequiredWithCookieAndBlacklist(redisClient *redis.Client) gin.HandlerFu
 			}
 		} else {
 			currentVersion, _ = strconv.Atoi(currentVersionStr)
+			db.DB.Model(&model.Account{}).Where("user_id = ?", claims.UserID).Select("id").First(&account)
 		}
 
 		if tokenVersion != currentVersion {
@@ -124,6 +124,37 @@ func AuthRequiredWithCookieAndBlacklist(redisClient *redis.Client) gin.HandlerFu
 			return
 		}
 		ctx.Set("current_user_id", claims.UserID)
+		ctx.Set("current_account_id", account.ID)
+		ctx.Next()
+	}
+}
+
+func AuthPermission(as *service.AccountService, perms string) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		accountIDValue, ok := ctx.Get("current_account_id")
+		if !ok {
+			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Chưa đăng nhập"})
+			ctx.Abort()
+			return
+		}
+
+		accountID, ok := accountIDValue.(uint)
+		if !ok {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi hệ thống: Ép kiểu ID thất bại"})
+			ctx.Abort()
+			return
+		}
+		hasPerms, err := as.CheckAccountPermission(accountID, perms)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi hệ thống: Truy vấn Permission thất bại"})
+			ctx.Abort()
+			return
+		}
+		if !hasPerms {
+			ctx.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền truy cấp chức năng này"})
+			ctx.Abort()
+			return
+		}
 		ctx.Next()
 	}
 }

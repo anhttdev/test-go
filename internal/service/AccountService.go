@@ -25,14 +25,16 @@ type AccountService struct {
 	ur          repository.UserRepository
 	ar          repository.AccountRepository
 	redisClient *redis.Client
+	amqp        RabbitMQService
 }
 
-func NewAccountService(db *gorm.DB, ar repository.AccountRepository, ur repository.UserRepository, redisClient *redis.Client) *AccountService {
+func NewAccountService(db *gorm.DB, ar repository.AccountRepository, ur repository.UserRepository, redisClient *redis.Client, amqp RabbitMQService) *AccountService {
 	return &AccountService{
 		db:          db,
 		ar:          ar,
 		ur:          ur,
 		redisClient: redisClient,
+		amqp:        amqp,
 	}
 }
 
@@ -104,8 +106,9 @@ func (as *AccountService) SendResetPassWord(email string) error {
 		Token:     resetToken,
 		ExpiredAt: time.Now().Add(15 * time.Minute),
 	}
+
 	as.db.Create(&resetPasswordObj)
-	resetLink := fmt.Sprintf("http://localhost:3000/reset-password?token=%s", resetToken)
+	resetLink := fmt.Sprintf("http://localhost:8080/reset-password?token=%s", resetToken)
 	emailBody := fmt.Sprintf(`
 		<h3>Yêu cầu đặt lại mật khẩu</h3>
 		<p>Chào bạn, chúng tôi nhận được yêu cầu đổi mật khẩu cho tài khoản ứng dụng của bạn.</p>
@@ -118,7 +121,9 @@ func (as *AccountService) SendResetPassWord(email string) error {
 		<p>Nếu bạn không gửi yêu cầu này, vui lòng bỏ qua email này.</p>
 	`, resetLink)
 
-	go as.SendEmail(email, "Khôi phục mật khẩu ứng dụng", emailBody)
+	if err = as.amqp.ResetPassRabbitMQ(email, emailBody); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -174,4 +179,130 @@ func (AccountService *AccountService) ChangePassWord(userID uint, newPassword st
 	}
 
 	return nil
+}
+
+func (as *AccountService) AssignRolesToAccount(accountID uint, roleIDs []uint) error {
+	var account model.Account
+
+	if err := as.db.First(&account, accountID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return apperr.ErrAccountNotFound
+		}
+		return err
+	}
+
+	var roles []model.Role
+	if len(roleIDs) > 0 {
+		if err := as.db.Find(&roles, roleIDs).Error; err != nil {
+			return err
+		}
+	}
+
+	if len(roles) > 0 {
+		err := as.db.Model(&account).Association("Roles").Append(roles)
+		if err != nil {
+			return fmt.Errorf("%w: %w", apperr.ErrAssignRoleFailed, err)
+		}
+	}
+
+	return nil
+}
+
+func (as *AccountService) RemoveRolesFromAccount(accountID uint, roleIDs []uint) error {
+	var account model.Account
+
+	// Bước 1: Tìm xem tài khoản có tồn tại không
+	if err := as.db.First(&account, accountID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return apperr.ErrAccountNotFound
+		}
+		return err
+	}
+
+	//if account.ID == 1 {
+	//	return errors.New("lệnh cấm: Không được phép bãi nhiệm tài khoản quản trị gốc (ID = 1)")
+	//}
+
+	var rolesToRemove []model.Role
+	if len(roleIDs) > 0 {
+		if err := as.db.Find(&rolesToRemove, roleIDs).Error; err != nil {
+			return err
+		}
+	}
+
+	if len(rolesToRemove) > 0 {
+		err := as.db.Model(&account).Association("Roles").Delete(rolesToRemove)
+		if err != nil {
+			return fmt.Errorf("%w: %w", apperr.ErrRemoveRoleFailed, err)
+		}
+	}
+
+	return nil
+}
+
+func (as *AccountService) GetAccountRoles(accountID uint) ([]model.Role, error) {
+	var account model.Account
+	err := as.db.Preload("Roles").First(&account, accountID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperr.ErrAccountNotFound
+		}
+		return nil, fmt.Errorf("%w: %w", apperr.ErrAccountRolesFetchFailed, err)
+	}
+	return account.Roles, nil
+}
+
+func (as *AccountService) GetAccountPermission(accountID uint) ([]string, error) {
+	var account model.Account
+	err := as.db.Preload("Roles.Permissions").First(&account, accountID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperr.ErrAccountNotFound
+		}
+		return nil, fmt.Errorf("không thể lấy danh sách quyền hạn của tài khoản: %w", err)
+	}
+
+	permsMap := make(map[string]bool)
+	for _, role := range account.Roles {
+		for _, per := range role.Permissions {
+			permsMap[per.PermissionCode] = true
+		}
+	}
+
+	permissions := make([]string, 0, len(permsMap))
+	for code := range permsMap {
+		permissions = append(permissions, code)
+	}
+
+	return permissions, nil
+}
+
+func (as *AccountService) CheckAccountPermission(accountID uint, requiredPerm string) (bool, error) {
+	var count int64
+
+	err := as.db.Table("accounts").
+		Joins("JOIN user_roles ON user_roles.account_id = accounts.id").
+		Joins("JOIN roles ON roles.id = user_roles.role_id").
+		Joins("JOIN role_permissions ON role_permissions.role_id = roles.id").
+		Joins("JOIN permissions ON permissions.id = role_permissions.permission_id").
+		Where("accounts.id = ? AND permissions.permission_code = ?", accountID, requiredPerm).
+		Count(&count).Error
+
+	return count > 0, err
+}
+
+// GetProfileByAccountID
+func (as *AccountService) GetProfileByAccountID(accountID uint) (*model.Account, error) {
+	var account model.Account
+
+	// Preload luôn thông tin User (họ tên, ngày sinh) và Roles (chức vụ) để Frontend hiển thị lên màn hình chính
+	err := as.db.Preload("User").Preload("Roles").First(&account, accountID).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Bảo mật: Xóa hash mật khẩu trước khi trả về tầng Handler để tránh rò rỉ dữ liệu nhạy cảm
+	account.PasswordHash = ""
+
+	return &account, nil
 }

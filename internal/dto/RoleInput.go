@@ -22,3 +22,8 @@ type AssignPermissionToRoleInput struct {
 type AssignRoleToUserInput struct {
 	RoleIDs []uint `json:"role_ids" binding:"required,min=1"` // Danh sách ID các role muốn cấp cho Account
 }
+
+type AssignRoleToAccount struct {
+	AccountID uint   `json:"account_id" binding:"required"`
+	Roles     []uint `json:"roles" binding:"required"`
+}
