@@ -17,17 +17,17 @@ pipeline {
     ACCESS_SECRET_KEY = credentials('jwt-access-secret')
     REFRESH_SECRET_KEY = credentials('jwt-refresh-secret')
     }
-    stage {
-    stage {
-        steps {
+    stages {
+        stage {
+            steps {
             git branch: 'main', credentialsId: 'github-credentials', url: 'https://github.com/anhttdev/go.git'
+            }
         }
-    }
 
-    stage("Chuan bi moi truong .env") {
-        steps {
-        echo 'Dang tao file .env'
-        sh '''
+        stage("Chuan bi moi truong .env") {
+            steps {
+                echo 'Dang tao file .env'
+                sh '''
             cat<<EOF > .env
             DB_HOST=${DB_HOST}
             DB_PORT=${DB_PORT}
@@ -42,8 +42,8 @@ pipeline {
             rabbitMQ_url=${RABBITMQ_URL}
             EOF
             '''
+             }
         }
-    }
 
     stage ("Bien dich va kiem thu") {
         agent {
@@ -85,18 +85,20 @@ pipeline {
                 }
         }
     }
+    }
 
     post {
         always {
             sh 'rm -f .env'
             sh "rm -f ${APP_NAME}"
             clear Ws()
-        }
+            }
         success {
         echo "✅ Xuất sắc! Ứng dụng Go đã sẵn sàng tại: ${IMAGE_NAME}:${BUILD_NUMBER}"
-        }
+            }
         failure {
         echo "❌ Quy trình gặp lỗi. Hãy kiểm tra lại log."
+            }
         }
-    }
+
 }
