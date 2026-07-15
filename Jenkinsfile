@@ -77,14 +77,13 @@ pipeline {
     stage ("Day len docker hub") {
         steps {
             withCredentials([usernamePassword(credentialsId:'docker-hub-credentials', passwordVariable:'DOCKER_PASS',
-            usernameVariable: 'DOCKER_USER'))]) {
+            usernameVariable: 'DOCKER_USER')]) {
                 sh "echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin"
                 sh "docker push ${IMAGE_NAME}:${BUILD_NUMBER}"
                 sh "docker push ${IMAGE_NAME}:latest"
                 sh 'docker logout'
-            }
+                }
         }
-    }
     }
 
     post {
