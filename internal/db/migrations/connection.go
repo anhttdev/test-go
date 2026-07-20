@@ -35,6 +35,11 @@ func InitDB() error {
 		&model.User{},
 		&model.LichSuCongTac{},
 	)
+	if err != nil {
+		log.Fatalf("❌ LỖI MIGRATION NGHIÊM TRỌNG: %v", err)
+	} else {
+		log.Println("✅ MIGRATION THÀNH CÔNG!")
+	}
 	SeedRolesAndPermissions(DB)
 	if err != nil {
 		return fmt.Errorf("error during migration: %w", err)

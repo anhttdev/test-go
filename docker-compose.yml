@@ -1,25 +1,5 @@
 services:
- db:
-  image: postgres:17.5-alpine3.22
-  container_name: postgres-db
-  restart: unless-stopped
-  environment: 
-    POSTGRES_DB: test-golang
-    POSTGRES_USER: root
-    POSTGRES_PASSWORD: "123456"
-  ports:
-    - "5433:5432"
-  volumes:
-    - pgdata_real:/var/lib/postgresql/data
-  networks:
-    - golang-network
-  healthcheck:
-    test: ["CMD-SHELL", "pg_isready -U root -d test-golang"]
-    interval: 5s
-    timeout: 5s
-    retries: 5
- 
- redis-cache:
+  redis-cache:
     image: redis:7.2-alpine
     restart: unless-stopped
     ports:
@@ -31,45 +11,56 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
- rabbitmq:
-    image: rabbitmq:3.13-management-alpine # Bản có sẵn giao diện quản lý trực quan
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
     container_name: rabbitmq-broker
     restart: unless-stopped
     ports:
-      - "5672:5672"   # Cổng kết nối chính của ứng dụng (AMQP)
-      - "15672:15672" # Cổng đục ra vỉa hè máy Mac để bạn vào xem giao diện Web quản lý
+      - "5672:5672"
+      - "15672:15672"
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
     networks:
       - golang-network
-    # Trình check sức khỏe để chắc chắn RabbitMQ đã mở cổng sẵn sàng nhận tin nhắn
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
       interval: 10s
       timeout: 5s
       retries: 5
- api:
-  build:
-    context: .
-  restart: on-failure
-  ports:
-    - "8080:8080"
-  networks:
-    - golang-network
-  depends_on:
-    db:
-      condition: service_healthy
-    redis-cache:
-      condition: service_healthy
- frontend:
+
+  api:
     build:
-      context: ./frontend # Đường dẫn trỏ vào thư mục chứa ảnh bạn vừa gửi
+      context: .
+    restart: on-failure
+    environment:
+      DB_HOST: "database-1.cbu2iguumukf.ap-southeast-2.rds.amazonaws.com"
+      DB_PORT: "5432"
+      DB_USER: "postgres"
+      DB_PASSWORD: "${DB_PASSWORD}"
+      DB_NAME: "db_test"
+      DB_SSLROOTCERT: "/app/global-bundle.pem"
+    volumes:
+      - ./global-bundle.pem:/app/global-bundle.pem
+    ports:
+      - "8080:8080"
+    networks:
+      - golang-network
+    depends_on:
+      redis-cache:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
       dockerfile: Dockerfile
     container_name: react-frontend
     restart: unless-stopped
     ports:
-      - "3000:3000" # 🌟 Đục ống thò ra cổng 3000 máy Mac để bạn vào xem giao diện
+      - "3000:3000"
     networks:
       - golang-network
     depends_on:
@@ -78,9 +69,3 @@ services:
 networks:
   golang-network:
     driver: bridge
-
-
-volumes:
-  pgdata_real:
-
-

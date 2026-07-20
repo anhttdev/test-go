@@ -21,7 +21,10 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("⚠️ Không tìm thấy file .env, sử dụng cấu hình mặc định")
 	}
-	db.InitDB()
+	if err := db.InitDB(); err != nil {
+		log.Fatalf("❌ LỖI KHỞI TẠO DATABASE: %v", err)
+	}
+	log.Println("✅ Kết nối DB thành công, bắt đầu DI...")
 	db2.InitRedis()
 	if err := utils.RegisterValidation(); err != nil {
 		panic("❌ Không thể đăng ký validator: " + err.Error())

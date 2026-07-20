@@ -1,0 +1,44 @@
+name: Backend Pipeline
+
+on:
+  push:
+    branches: ["main"]
+
+  jobs:
+    test-and-build:
+      runs-on: ubuntu-lastest
+
+      env:
+        DB_HOST: database-1.cbu2iguumukf.ap-southeast-2.rds.amazonaws.com
+        DB_PORT: 5432
+        DB_USER: postgres
+        DB_NAME: db_test
+        DB_SSLMODE: verify-full
+        DB_SSLROOTCERT: ./global-bundle.pem # Trỏ trực tiếp tới file trong repo
+        REDIS_HOST: redis-cache
+        REDIS_PORT: 6379
+        RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+
+
+      steps:
+        - name: Checkout code
+          uses: actions/checkout@v4
+
+        - name: Setup Go
+          uses: actions/setup-go@v5
+          with:
+            go-version: '1.26'
+
+        - name: Install Dependencies
+          run: go mod download
+
+        - name: Run tests
+          run: go test -v ./...
+
+
+          env:
+            DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+            REFRESH_SECRET_KEY: ${{ secrets.REFRESH_SECRET_KEY }}
+
+        - name: Build app
+          run: go build -o my-app ./cmd/main.go
