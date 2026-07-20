@@ -40,4 +40,4 @@ jobs:
 
 
       - name: Build app
-        run: go build -o my-app ./cmd/main.go
+        run: go build -o my-app ./cmd/api/main.go
