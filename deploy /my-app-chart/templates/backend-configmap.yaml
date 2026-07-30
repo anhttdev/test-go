@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-env-config
+data:
+  .env: |
+    DB_HOST={{ .Values.backend.env.dbHost }}
+    DB_PORT={{ .Values.backend.env.dbPort }}
+    DB_USER={{ .Values.backend.env.dbUser }}
+    DB_PASSWORD={{ .Values.backend.env.dbPassword }}
+    DB_NAME={{ .Values.backend.env.dbName }}
+    DB_SSLMODE={{ .Values.backend.env.dbSslmode }}
+    refresh_secret_key={{ .Values.backend.env.refreshSecretKey }}
+    DB_SSLROOTCERT={{ .Values.backend.env.dbSslrootcert }}
+    REDIS_HOST={{ .Values.backend.env.redisHost }}
+    REDIS_PORT={{ .Values.backend.env.redisPort }}
+    rabbitMQ_url={{ .Values.backend.env.rabbitMQUrl }}

@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8081
+          env:
+            - name: GIN_MODE
+              value: "release"
+            - name: DB_HOST
+              value: "{{ .Values.backend.env.dbHost }}"
+            - name: DB_PORT
+              value: "{{ .Values.backend.env.dbPort }}"
+            - name: DB_USER
+              value: "{{ .Values.backend.env.dbUser }}"
+            - name: DB_PASSWORD
+              value: "{{ .Values.backend.env.dbPassword }}"
+            - name: DB_NAME
+              value: "{{ .Values.backend.env.dbName }}"
+            - name: DB_SSLMODE
+              value: "{{ .Values.backend.env.dbSslmode }}"
+            - name: refresh_secret_key
+              value: "{{ .Values.backend.env.refreshSecretKey }}"
+            - name: DB_SSLROOTCERT
+              value: "{{ .Values.backend.env.dbSslrootcert }}"
+            - name: REDIS_HOST
+              value: "{{ .Values.backend.env.redisHost }}"
+            - name: REDIS_PORT
+              value: "{{ .Values.backend.env.redisPort }}"
+            - name: rabbitMQ_url
+              value: "{{ .Values.backend.env.rabbitMQUrl }}"

@@ -1,0 +1,25 @@
+replicaCount: 1
+
+backend:
+  env:
+    dbHost: "database-1.cbu2iguumukf.ap-southeast-2.rds.amazonaws.com"
+    dbPort: "5432"
+    dbUser: "postgres"
+    dbPassword: "Tuananh250106"
+    dbName: "db_test"
+    dbSslmode: "verify-full"
+    refreshSecretKey: "tuananh16"
+    dbSslrootcert: "/app/global-bundle.pem"
+    redisHost: "redis-cache"
+    redisPort: "6379"
+    rabbitMQUrl: "amqp://guest:guest@rabbitmq:5672/"
+  image:
+    repository: tuananhtrinh/my-go-backend
+    tag: latest
+  port: 8081
+
+frontend:
+  image:
+    repository: tuananhtrinh/my-react-frontend
+    tag: latest
+  port: 80
